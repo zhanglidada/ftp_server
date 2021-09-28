@@ -43,6 +43,8 @@ int main(int argc, char* argv[]) {
   // 绑定特定端口
   serv_addr.sin_port = htons(atoi(argv[1]));
 
+  bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+
 
   return 0;
 }
