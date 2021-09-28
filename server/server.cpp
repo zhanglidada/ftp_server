@@ -22,6 +22,8 @@ int main(int argc, char* argv[]) {
   // 定义服务器以及客户端的socket地址
   struct sockaddr_in serv_addr, client;
 
+  int nAddrLen = sizeof(client);  // 保存客户端接收的
+
   // 创建socket并获得socket文件描述字
   listenfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -43,7 +45,19 @@ int main(int argc, char* argv[]) {
   // 绑定特定端口
   serv_addr.sin_port = htons(atoi(argv[1]));
 
+  // 将描述字绑定名字
   bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+  
+  // server的最大连接个数为10
+  listen(listenfd, 10);
+  
+  // 接受一个新连接
+  connfd = accept(listenfd, (struct sockaddr*)&client, (socklen_t *)&nAddrLen);
+
+  
+
+
+
 
 
   return 0;
