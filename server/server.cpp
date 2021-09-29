@@ -42,20 +42,29 @@ int main(int argc, char* argv[]) {
   serv_addr.sin_family = AF_INET;
   // 监听本机的所有网卡ip
   serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  // 绑定特定端口
+  
+  // 绑定输入的端口号
   serv_addr.sin_port = htons(atoi(argv[1]));
 
   // 将描述字绑定名字
   bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
   
-  // server的最大连接个数为10
+  // 持续监听本地地址，且server的最大连接个数为10
   listen(listenfd, 10);
   
-  // 接受一个新连接
-  connfd = accept(listenfd, (struct sockaddr*)&client, (socklen_t *)&nAddrLen);
+  // 接受一个新连接,不指定特定的连接方式
+  connfd = accept(listenfd, NULL, NULL);
 
-  
+  char buf[100], command[5], filename[20], extension[20], lscommand[20];
 
+  // 循环
+  while (1)
+  {
+    // 从tcp的另一端接收数据
+    recv(connfd, buf, 100, 0);
+
+    sscanf(buf, "%s", command);
+  }
 
 
 
