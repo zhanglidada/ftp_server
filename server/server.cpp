@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <time.h> 
 #include <fcntl.h>
+#include <
 
 // 用于获取文件信息
 #include <sys/stat.h>
@@ -57,17 +58,67 @@ int main(int argc, char* argv[]) {
 
   char buf[100], command[5], filename[20], extension[20], lscommand[20];
 
+  struct stat obj;
+  int recv_size;
+  FILE* file_handle;  // 文件指针
+  int already_exists = 0;
+  int overwrite_choice = 0;
+  char* pos = NULL;
+
   // 循环
-  while (1)
-  {
-    // 从tcp的另一端接收数据
+  while (1) {
+    // 从tcp的另一端接收数据，接收的命令字符存储于buf中
     recv(connfd, buf, 100, 0);
 
+    // 从buf中读取格式化输入
     sscanf(buf, "%s", command);
-  }
 
+    /***********************************************************************                    
+      当前客户端发送的命令为put         
+     ***********************************************************************/
+    if (!strcmp(command, "put")) {
+      char* recv_buf;
+      sscanf(buf + strlen(command), "%s", filename);
+      stat(filename, &obj);
+      
+      // 判断put的文件在ftp server中是否存在
+      if (access(filename, F_OK) != -1) {
+        already_exists = 1;
+        send(connfd, &already_exists, sizeof(int), 0);
+      }
+      else {
+        already_exists = 0;
+        send(connfd, &already_exists, sizeof(int), 0);
+      }
+      // 客户端根据server收到的反馈信号，发送对应的overwrite信号，server接收
+      recv(connfd, &overwrite_choice, sizeof(int), 0);
 
+      // judge the overwrite signal
+      if (already_exists == 1 && overwrite_choice == 1) {
+        // 文件在server中存在，且客户端发送覆盖信号
+        file_handle = fopen(filename, "w");
 
+        recv(connfd, &recv_size, sizeof(int), 0);  // 首先接收需要发送的数据的大小
+
+        recv_buf = (char*)malloc(recv_size);  // 根据
+        recv(connfd, recv_buf, recv_size, 0);
+
+      }
+      else if (already_exists == 0 && overwrite_choice == 1) {
+
+      }
+    }  // if (!strcmp(command, "put"))
+    else if (!strcmp(command, "get")) {
+
+    }  // else if (!strcmp(command, "get"))
+    else if (!strcmp(command, "mget")) {
+
+    }  // else if (!strcmp(command, "mget"))
+    else if (!strcmp(command, "quit")) {
+
+    }  // else if (!strcmp(command, "quit"))
+
+  }  // while (1)
 
   return 0;
 }
