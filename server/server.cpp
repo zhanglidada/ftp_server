@@ -43,7 +43,6 @@ int main(int argc, char* argv[]) {
   serv_addr.sin_family = AF_INET;
   // 监听本机的所有网卡ip
   serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  
   // 绑定输入的端口号
   serv_addr.sin_port = htons(atoi(argv[1]));
 
@@ -60,6 +59,7 @@ int main(int argc, char* argv[]) {
 
   struct stat obj;
   int recv_size;
+  int count;
   FILE* file_handle;  // 文件指针
   int already_exists = 0;
   int overwrite_choice = 0;
@@ -67,10 +67,10 @@ int main(int argc, char* argv[]) {
 
   // 循环
   while (1) {
-    // 从tcp的另一端接收数据，接收的命令字符存储于buf中
+    // 从tcp的另一端接收数据，将接收缓冲区中的数据存储在buf中
     recv(connfd, buf, 100, 0);
 
-    // 从buf中读取格式化输入
+    // 从buf中读取格式化输入，即以空格区分的第一个字符串
     sscanf(buf, "%s", command);
 
     /***********************************************************************                    
@@ -78,12 +78,14 @@ int main(int argc, char* argv[]) {
      ***********************************************************************/
     if (!strcmp(command, "put")) {
       char* recv_buf;
+      // 读取buf中的下一个字符串
       sscanf(buf + strlen(command), "%s", filename);
-      stat(filename, &obj);
       
-      // 判断put的文件在ftp server中是否存在
+      // 判断put的文件在ftp server中是否存在,并向client发送应答
       if (access(filename, F_OK) != -1) {
         already_exists = 1;
+        // send发送时需要比较发送数据的长度和connfd的缓冲区size，
+        // 注意此时send仅仅将缓冲区中的数据拷贝到套接字发送缓冲区中的缓存中，但是数据并没有发送
         send(connfd, &already_exists, sizeof(int), 0);
       }
       else {
@@ -100,20 +102,48 @@ int main(int argc, char* argv[]) {
 
         recv(connfd, &recv_size, sizeof(int), 0);  // 首先接收需要发送的数据的大小
 
-        recv_buf = (char*)malloc(recv_size);  // 根据
+        recv_buf = (char*)malloc(recv_size);  // 根据接收到的file文件size分配接收缓冲的大小
         recv(connfd, recv_buf, recv_size, 0);
+
+        count = (int)fwrite(recv_buf, recv_size, sizeof(char), file_handle);
+        printf("file size is : %d\n", count);
+
+        fclose(file_handle);
+        // 发送当前状态
+        send(connfd, &count, sizeof(int), 0);
 
       }
       else if (already_exists == 0 && overwrite_choice == 1) {
-
+        // 当前文件不存在，需要先创建
+        file_handle = fopen(filename, "w");
+        recv(connfd, &recv_size, sizeof(recv_size), 0);
+        recv_buf = (char*)malloc(recv_size);
+        count = fwrite(recv_buf, recv_size, sizeof(char), file_handle);
+        printf("file size is : %d\n", count);
+        fclose(file_handle);
+        send(connfd, &count, sizeof(int), 0);
       }
     }  // if (!strcmp(command, "put"))
+    /***********************************************************************                    
+      当前客户端发送的命令为get       
+     ***********************************************************************/
     else if (!strcmp(command, "get")) {
+      sscanf(buf, )
+
+
+      // 根据文件名获取文件信息并保存于obj中
+      stat(filename, &obj);
 
     }  // else if (!strcmp(command, "get"))
+    /***********************************************************************                    
+      当前客户端发送的命令为mget 
+     ***********************************************************************/
     else if (!strcmp(command, "mget")) {
 
     }  // else if (!strcmp(command, "mget"))
+    /***********************************************************************                    
+      当前客户端发送的命令为quit       
+     ***********************************************************************/
     else if (!strcmp(command, "quit")) {
 
     }  // else if (!strcmp(command, "quit"))
