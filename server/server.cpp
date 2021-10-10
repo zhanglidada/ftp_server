@@ -7,9 +7,10 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <time.h> 
 #include <fcntl.h>
-#include <
+
 
 // 用于获取文件信息
 #include <sys/stat.h>
@@ -70,16 +71,16 @@ int main(int argc, char* argv[]) {
     // 从tcp的另一端接收数据，将接收缓冲区中的数据存储在buf中
     recv(connfd, buf, 100, 0);
 
-    // 从buf中读取格式化输入，即以空格区分的第一个字符串
+    // 从buf中读取格式化输入，即以空格区分的第一个字符串，区分客户端发送的命令模式
     sscanf(buf, "%s", command);
 
     /***********************************************************************                    
-      当前客户端发送的命令为put         
+      当前客户端发送的命令为put, 将客户端本地文件推送到服务器
      ***********************************************************************/
     if (!strcmp(command, "put")) {
       char* recv_buf;
       // 读取buf中的下一个字符串
-      sscanf(buf + strlen(command), "%s", filename);
+      sscanf(buf + strlen(command), "%s %s", filename, filename);
       
       // 判断put的文件在ftp server中是否存在,并向client发送应答
       if (access(filename, F_OK) != -1) {
@@ -103,7 +104,7 @@ int main(int argc, char* argv[]) {
         recv(connfd, &recv_size, sizeof(int), 0);  // 首先接收需要发送的数据的大小
 
         recv_buf = (char*)malloc(recv_size);  // 根据接收到的file文件size分配接收缓冲的大小
-        recv(connfd, recv_buf, recv_size, 0);
+        recv(connfd, recv_buf, recv_size, 0); 
 
         count = (int)fwrite(recv_buf, recv_size, sizeof(char), file_handle);
         printf("file size is : %d\n", count);
@@ -125,10 +126,11 @@ int main(int argc, char* argv[]) {
       }
     }  // if (!strcmp(command, "put"))
     /***********************************************************************                    
-      当前客户端发送的命令为get       
+      当前客户端发送的命令为get，客户端发送get命令，从服务端下载文件
      ***********************************************************************/
     else if (!strcmp(command, "get")) {
-      sscanf(buf, )
+      // 客户端发送的消息，第一个字符串为服务器的文件位置
+      sscanf(buf + strlen(), "%s", filename);
 
 
       // 根据文件名获取文件信息并保存于obj中
