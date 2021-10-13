@@ -59,9 +59,10 @@ int main(int argc, char* argv[]) {
   char buf[100], command[5], filename[20], extension[20], lscommand[20];
 
   struct stat obj;
-  int recv_size;
-  int count;
-  FILE* file_handle;  // 文件指针
+  int recv_size = 0;
+  int file_size = 0;
+  int count = 0;
+  int file_handle = 0;  // 文件描述符
   int already_exists = 0;
   int overwrite_choice = 0;
   char* pos = NULL;
@@ -99,29 +100,29 @@ int main(int argc, char* argv[]) {
       // judge the overwrite signal
       if (already_exists == 1 && overwrite_choice == 1) {
         // 文件在server中存在，且客户端发送覆盖信号
-        file_handle = fopen(filename, "w");
+        file_handle = open(filename, O_RDWR);  // 读写的形式打开
 
         recv(connfd, &recv_size, sizeof(int), 0);  // 首先接收需要发送的数据的大小
 
         recv_buf = (char*)malloc(recv_size);  // 根据接收到的file文件size分配接收缓冲的大小
         recv(connfd, recv_buf, recv_size, 0); 
 
-        count = (int)fwrite(recv_buf, recv_size, sizeof(char), file_handle);
+        count = (int)write(file_handle, recv_buf, recv_size);
         printf("file size is : %d\n", count);
 
-        fclose(file_handle);
+        close(file_handle);
         // 发送当前状态
         send(connfd, &count, sizeof(int), 0);
 
       }
       else if (already_exists == 0 && overwrite_choice == 1) {
         // 当前文件不存在，需要先创建
-        file_handle = fopen(filename, "w");
+        file_handle = open(filename, O_RDWR);
         recv(connfd, &recv_size, sizeof(recv_size), 0);
         recv_buf = (char*)malloc(recv_size);
-        count = fwrite(recv_buf, recv_size, sizeof(char), file_handle);
+        count = (int)write(file_handle, recv_buf, recv_size);
         printf("file size is : %d\n", count);
-        fclose(file_handle);
+        close(file_handle);
         send(connfd, &count, sizeof(int), 0);
       }
     }  // if (!strcmp(command, "put"))
@@ -129,13 +130,33 @@ int main(int argc, char* argv[]) {
       当前客户端发送的命令为get，客户端发送get命令，从服务端下载文件
      ***********************************************************************/
     else if (!strcmp(command, "get")) {
-      // 客户端发送的消息，第一个字符串为服务器的文件位置
-      sscanf(buf + strlen(), "%s", filename);
-
+      // 客户端发送的消息，去除命令的偏移后，第一个字符串即为服务器上的文件
+      sscanf(buf + strlen(command), "%s", filename);
 
       // 根据文件名获取文件信息并保存于obj中
       stat(filename, &obj);
 
+      // 此时客户端从服务器下载文件，只需要以读模式打开文件
+      file_handle = open(filename, O_RDONLY);
+
+      file_size = obj.st_size;  // 获取文件的size，返回给客户端
+
+      if (file_handle == NULL)
+        file_size = 0;
+
+      // 发送文件size给客户端
+      send(connfd, &file_size, sizeof(int), 0);
+
+      // get获取的文件不在服务器上，继续循环，等待客户端的下一次发送
+      if (file_size == 0)
+        continue;
+      
+      // 接收客户端发送的overwrite信号
+      recv(connfd, &overwrite_choice, sizeof(int), 0);
+
+      // 零拷贝发送数据
+      if (overwrite_choice == 1)
+        sendfile(connfd, file_handle, NULL, file_size);
     }  // else if (!strcmp(command, "get"))
     /***********************************************************************                    
       当前客户端发送的命令为mget 
