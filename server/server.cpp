@@ -1,3 +1,5 @@
+// gcc server.c -o server
+// ./server <port>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -59,13 +61,16 @@ int main(int argc, char* argv[]) {
   char buf[100], command[5], filename[20], extension[20], lscommand[20];
 
   struct stat obj;
-  int recv_size = 0;
-  int file_size = 0;
-  int count = 0;
-  int file_handle = 0;  // 文件描述符
-  int already_exists = 0;
-  int overwrite_choice = 0;
-  char* pos = NULL;
+  int recv_size             = 0;
+  int file_size             = 0;
+  int count                 = 0;
+  int file_handle           = 0;  // 文件描述符
+  int already_exists        = 0;
+  int overwrite_choice      = 0;
+  int status                = 0;
+  char* pos                 = NULL;
+  int num_lines             = 0;  // 传输文件的数量
+  int ch                    = 0;  // 文件读取的返回值
 
   // 循环
   while (1) {
@@ -77,6 +82,7 @@ int main(int argc, char* argv[]) {
 
     /***********************************************************************                    
       当前客户端发送的命令为put, 将客户端本地文件推送到服务器
+      如果文件在server中存在，server要向client发送是否覆盖的消息
      ***********************************************************************/
     if (!strcmp(command, "put")) {
       char* recv_buf;
@@ -159,16 +165,75 @@ int main(int argc, char* argv[]) {
         sendfile(connfd, file_handle, NULL, file_size);
     }  // else if (!strcmp(command, "get"))
     /***********************************************************************                    
-      当前客户端发送的命令为mget 
+      当前客户端发送的命令为mget,下载服务器上的多个文件，支持通配符
+      此处使用了系统的ls命令，且客户端发送的是需要获取的文件类型
      ***********************************************************************/
     else if (!strcmp(command, "mget")) {
+      char* line                = NULL;  // 读取的文件行内容
+      size_t len                = 0;
+      ssize_t read              = 0;  // signed size_t
+
+      sscanf(buf + sizeof(command), extension);
+      strcpy(lscommand, "ls *.");
+      strcat(lscommand, extension);
+      strcat(lscommand, "> filelist.txt");
+      // 执行linux系统命令
+      system(lscommand);
+
+      // 打开=需要下载的文件列表
+      FILE* fp = fopen("filelist.txt", "r");
+      
+      // 计算得到文件列表的数目
+      while (!feof(fp)) {
+        // 获取文件指针流中的一个字符，做为无符号数读取并转换成整数
+        ch = fgetc(fp);
+        if (ch == '\n')
+          num_lines ++;
+      }
+
+      // 重新定位文件指针到文件头
+      fseek(fp, 0, SEEK_SET);
+
+      send(connfd, &num_lines, sizeof(int), 0);  // 发送server接收到的需要mget的文件数量
+
+      // 发送所有文件到客户端
+      while (read = getline(&line, &len, fp) != -1) {
+        // getline获取的行数据以 '\n' 结尾
+        if ((pos = strchr(line, '\n')) != NULL)
+          *pos = '\0';
+
+        strcpy(filename, line);  // 将文件名进行拷贝
+        
+        send(connfd, filename, 20, 0);  // 发送文件名
+        
+        stat(line, &obj);
+        // 以只读模式打开文件
+        file_handle = open(filename, O_RDONLY);
+        file_size = obj.st_size;
+        send(connfd, &file_size, sizeof(int), 0);  // 发送文件size
+        // server 接收客户端发送的文件接受命令
+        recv(connfd, &overwrite_choice, sizeof(int), 0);
+
+        if (file_size && overwrite_choice == 1) {
+          // 零拷贝发送文件
+          sendfile(connfd, file_handle, NULL, file_size);
+        }
+      }
+
+      // 关闭并删除文件
+      fclose(fp);
+      remove("filelist.txt");
 
     }  // else if (!strcmp(command, "mget"))
     /***********************************************************************                    
-      当前客户端发送的命令为quit       
+      当前客户端发送的命令为quit，退出ftp服务   
      ***********************************************************************/
     else if (!strcmp(command, "quit")) {
-
+      printf("FTP server quitting..\n");
+      status = 1;
+      // 发送结束状态
+      send(connfd, &status, sizeof(int), 0);
+      exit(0);  // server退出
     }  // else if (!strcmp(command, "quit"))
 
   }  // while (1)
