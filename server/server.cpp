@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
   int file_handle           = 0;  // 文件描述符
   int already_exists        = 0;
   int overwrite_choice      = 0;
-  int status                = 0;
+  int status                = 0;  // 服务器状态
   char* pos                 = NULL;
   int num_lines             = 0;  // 传输文件的数量
   int ch                    = 0;  // 文件读取的返回值
