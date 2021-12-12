@@ -19,22 +19,24 @@
   根据server的ip以及port进行连接
  */
 int main(int argc,char *argv[]) {
-  int       sockfd = 0;   // socket文件描述符
+  int       sockfd              = 0;   // socket文件描述符
   char      recvbuf[1024];  // 接收消息的缓冲区
   struct    sockaddr_in serv_addr;
 
-  int       choice = 0;  // 用于发送客户端做出的选择
+  int       choice              = 0;  // 用于发送客户端做出的选择
   char      choice_str[1024];  // 客户端的选择
-  int       choice_str_len = 0;
+  int       choice_str_len      = 0;
   char      filename[20];  // 文件名
   char      buf[100];  // 发送缓冲
-  char*     recv_buf = NULL;  // 接受缓存
-  char      ext[20];
-  int       filehandle = 0;  // 文件描述符
-  int       already_exists = 0;  // 判断需要发送的文件是否在服务端存在
-  int       overwrite_choice = 1;  // 文件覆盖选项
+  char*     recv_buf            = NULL;  // 接受缓存
+  char      ext[20];  // mput以及mget的文件后缀
+  char      command[20];  // 命令
+  int       filehandle          = 0;  // 文件描述符
+  int       already_exists      = 0;  // 判断需要发送的文件是否在服务端存在
+  int       overwrite_choice    = 1;  // 文件覆盖选项
   struct    stat obj;  //  保存文件的状态信息
-  int       filesize, status = 0;
+  int       filesize, status    = 0;
+  int       file_nums           = 0;
 
   // 启动客户端时输入了非法的参数
   if (argc != 3) {
@@ -85,7 +87,8 @@ int main(int argc,char *argv[]) {
     // 根据输入的选项进行判断
     switch (choice) {
       memset(buf, sizeof(buf), '\0');  // reset buf every time
-      // 客户端将文件推送到服务端
+
+      //---------------------------------------put file in server---------------------------------------------------------//
       case 1:
         printf("Enter the filename to put in server\n");
         scanf("%s", filename);
@@ -126,7 +129,7 @@ int main(int argc,char *argv[]) {
         }
         break;
 
-      // get file from server
+      //---------------------------------------get file from server---------------------------------------------------------//
       case 2:
         printf("Enter filename to get:");
         scanf("%s", filename);
@@ -168,38 +171,136 @@ int main(int argc,char *argv[]) {
         }
         break;
 
-      // mput file to server
+      //---------------------------------------mput file to server-------------------------------------------------------//
       case 3:
+        printf("Enter the extension you want to put in server:\n");
+
+        scanf("%s", ext);
+        strcpy(command, "ls *.");
+        strcat(command, ext);
+        strcat(command, " > temp.txt");
+        system(command);
+
+        char*         line = NULL;
+        ssize_t       read;
+        size_t        len = 0;
+        char*         pos = NULL;  // 查找位置
+        FILE* fp = fopen("temp.txt", "r");  // read方式打开临时文件
+        
+        // 循环读取
+        while ((read = getline(&line, &len, fp)) != -1) {
+          if ((pos = strchr(line, '\n')) != NULL) {
+            *pos = '\0';  // 设置行尾
+          }
+
+          // 只读方式打开文件
+          filehandle = open(line, O_RDONLY);
+          strcpy(buf, "put ");
+          strcat(buf, line);
+          send(sockfd, buf, 100, 0);  //客户端将文件名发送给服务端
+          recv(sockfd, &already_exists, sizeof(int), 0);  // 接受文件状态
+
+          if (already_exists) {
+            printf("%s file already exits in server 1. overwirte 2.NO overwirte\n",line); // overwrite option for that particular file
+            scanf("%d", &overwrite_choice); 
+          }
+          send(sockfd, &overwrite_choice, sizeof(int), 0);  // sending overwrite choices
+
+          if (overwrite_choice == 1) {
+            filesize = 0;
+            stat(line, &obj);
+            filesize = obj.st_size;
+            send(sockfd, &filesize, sizeof(int), 0);  // 先发送文件size
+            sendfile(sockfd, filehandle, NULL, filesize);  // 发送文件
+            recv(sockfd, &status, sizeof(int), 0);
+            
+            if (status) {
+              printf("%s stored successfully\n",line);
+            } else {
+              printf("%s failed to be stored to remote machine\n",line);
+            } 
+          }  // if (overwrite_choice == 1)
+
+          overwrite_choice = 1;  // 重置overwrite choice
+          memset(ext, '\0', sizeof(ext));
+        }  // while ((read = getline(&line, &len, fp)) != -1)
+
+        // 关闭并删除临时文件
+        fclose(fp);
+        remove("temp.txt");
+        break;
       
-      // mget file from server
+      //---------------------------------------mget file from server-------------------------------------------------------//
       case 4:
+        memset(filename, '\0', sizeof(filename));  // 重置需要接受文件的文件名
+        filesize        = 0;
+        printf("Enter the extension, you want to get from server:\n");
+        scanf("%s", ext);
+        strcpy(buf, "mget ");
+        strcat(buf, ext);
+        send(sockfd, buf, sizeof(buf), 0);  // 发送需要获取的文件后缀名
+        recv(sockfd, &file_nums, sizeof(int), 0);
 
-      // quit
+        // 循环接受文件
+        while (file_nums) {
+          recv(sockfd, filename, sizeof(filename), 0);
+          recv(sockfd, &filesize, sizeof(int), 0);
+          
+          // error handling
+          if (!filesize) {
+            printf("No such file on the remote directory!\n");
+            break;
+          }
+
+          // checking if already exists or not
+          if (access(filename, F_OK) != -1) {
+            already_exists = 1;
+            printf("%s file already exits in client 1. overwirte 2.NO overwirte\n",filename);
+            scanf("%d", &overwrite_choice);
+          }
+          send(sockfd, &overwrite_choice, sizeof(int), 0);
+
+          if (overwrite_choice == 1 && already_exists == 1) {
+            // 对已经存在的文件覆盖
+            filehandle = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 644);  // clear all the file
+            recv_buf = (char*)malloc(filesize);
+            recv(sockfd, recv_buf, filesize, 0);
+            write(filehandle, recv_buf, filesize);
+            close(filehandle);
+          }
+          else if (overwrite_choice == 1 && already_exists == 0) {
+            // 创建新文件
+            filehandle = open(filename, O_CREAT | O_EXCL | O_WRONLY, 777);  // open a new file
+            recv_buf = (char*)malloc(filesize);
+            recv(sockfd, recv_buf, filesize, 0);
+            write(filehandle, recv_buf, filesize);
+            close(filehandle);
+          }
+
+          overwrite_choice      = 1;
+          already_exists        = 0;
+          file_nums --;
+        }
+        break;
+
+      //---------------------------------------quit the server-------------------------------------------------------------//
       case 5:
-      strcpy(buf, "quit");
-      send(sockfd, buf, 100, 0);
-      recv(sockfd, &status, sizeof(int), 0);
+        strcpy(buf, "quit");
+        send(sockfd, buf, 100, 0);
+        recv(sockfd, &status, sizeof(int), 0);
       
-      // 退出服务器
-      if (status) {
-        printf("server closed\n Quitting...\n");
-        exit(0);
-      }
-      printf("Server failed to close connection\n");		// faild to quit
-      break;
-    }
-  }
+        // 退出服务器
+        if (status) {
+          printf("server closed\n Quitting...\n");
+          exit(0);
+        }
+        printf("Server failed to close connection\n");		// faild to quit
+        break;
 
-
-
-
-
-
-
-
-
-
-
-      
+      default:
+        printf("choice the valid option!\n");
+        break;
+    }  // end of switch
+  }  // end of while 
   return 0;
-}
+}  // end of main
