@@ -37,6 +37,12 @@ int main(int argc,char *argv[]) {
   struct    stat obj;  //  保存文件的状态信息
   int       filesize, status    = 0;
   int       file_nums           = 0;
+  char*     line = NULL;
+  ssize_t   read;
+  size_t    len = 0;
+  char*     pos = NULL;  // 查找位置
+  FILE*     fp = NULL;  // 临时文件指针
+
 
   // 启动客户端时输入了非法的参数
   if (argc != 3) {
@@ -86,8 +92,6 @@ int main(int argc,char *argv[]) {
 
     // 根据输入的选项进行判断
     switch (choice) {
-      memset(buf, sizeof(buf), '\0');  // reset buf every time
-
       //---------------------------------------put file in server---------------------------------------------------------//
       case 1:
         printf("Enter the filename to put in server\n");
@@ -149,7 +153,7 @@ int main(int argc,char *argv[]) {
         if (access(filename, F_OK) != -1) {
           already_exists = 1;
           printf("same name file already exits in client 1. overwirte 2.NO overwirte\n");		// file already exits
-          scanf("%d", overwrite_choice);
+          scanf("%d", &overwrite_choice);
         }
 
         if (overwrite_choice && already_exists) {
@@ -174,18 +178,12 @@ int main(int argc,char *argv[]) {
       //---------------------------------------mput file to server-------------------------------------------------------//
       case 3:
         printf("Enter the extension you want to put in server:\n");
-
         scanf("%s", ext);
         strcpy(command, "ls *.");
         strcat(command, ext);
         strcat(command, " > temp.txt");
         system(command);
-
-        char*         line = NULL;
-        ssize_t       read;
-        size_t        len = 0;
-        char*         pos = NULL;  // 查找位置
-        FILE* fp = fopen("temp.txt", "r");  // read方式打开临时文件
+        fp = fopen("temp.txt", "r");  // read方式打开临时文件
         
         // 循环读取
         while ((read = getline(&line, &len, fp)) != -1) {
